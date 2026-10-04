@@ -50,6 +50,8 @@ Dilengkapi dengan **Web Dashboard interaktif modern**, **Live Browser Preview** 
 4. Di dashboard, klik tombol **"▶️ Mulai Bot (Start)"**.
 5. Jika belum login, QR Code TikTok akan tampil di bagian **Live Browser Preview**. Buka aplikasi TikTok di HP > Menu Scan > Arahkan ke layar untuk login.
 
+Untuk menyelesaikan verifikasi yang membutuhkan klik atau OTP, hentikan aplikasi yang sedang berjalan lalu jalankan **`run-headful.bat`** di sesi Windows/RDP interaktif. Jendela Chromium akan terbuka menggunakan profil yang sama di `user_data/browser_profile`; selesaikan verifikasi langsung di jendela itu dan jangan membagikan OTP. Setelah sesi tersimpan, hentikan aplikasi dengan `Ctrl+C`, lalu jalankan **`run.bat`** kembali. Launcher normal memakai mode headless secara default.
+
 ---
 
 ### Cara 2: Menjalankan 24/7 Menggunakan Docker (Rekomendasi VPS)
