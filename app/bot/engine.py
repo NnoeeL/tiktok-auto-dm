@@ -1,0 +1,477 @@
+import asyncio
+import os
+import re
+import json
+import random
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, Dict, Any, List
+from playwright.async_api import async_playwright, BrowserContext, Page, Playwright
+
+from app.config import (
+    BROWSER_PROFILE_DIR,
+    SCREENSHOTS_DIR,
+    settings
+)
+from app.database import (
+    get_active_rules,
+    can_reply_to_user,
+    record_reply,
+    log_activity
+)
+from app.bot.selectors import (
+    LOGIN_QR_CODE,
+    LOGIN_BUTTONS,
+    LOGGED_IN_INDICATORS,
+    MESSAGES_URL,
+    CHAT_ITEM_CONTAINERS,
+    UNREAD_BADGE,
+    CHAT_INPUT_BOX,
+    SEND_BUTTON,
+    MESSAGE_BUBBLES
+)
+
+logger = logging.getLogger("tiktok_bot")
+logging.basicConfig(level=logging.INFO)
+
+class TikTokBotEngine:
+    def __init__(self):
+        self.playwright: Optional[Playwright] = None
+        self.context: Optional[BrowserContext] = None
+        self.page: Optional[Page] = None
+        self.status: str = "STOPPED"  # STOPPED, STARTING, NEEDS_LOGIN, RUNNING, ERROR
+        self.status_message: str = "Bot is currently stopped."
+        self.is_running: bool = False
+        self._task: Optional[asyncio.Task] = None
+        self.hourly_replies: List[datetime] = []
+        self.live_screenshot_path = SCREENSHOTS_DIR / "live.png"
+        self.started_at: Optional[datetime] = None
+
+    async def get_state(self) -> Dict[str, Any]:
+        has_screenshot = self.live_screenshot_path.exists()
+        return {
+            "status": self.status,
+            "status_message": self.status_message,
+            "is_running": self.is_running,
+            "has_screenshot": has_screenshot,
+            "screenshot_timestamp": os.path.getmtime(self.live_screenshot_path) if has_screenshot else None,
+            "uptime_seconds": int((datetime.now() - self.started_at).total_seconds()) if (self.is_running and self.started_at) else 0,
+            "headless": settings.headless,
+            "check_interval": settings.check_interval
+        }
+
+    async def capture_screenshot(self) -> Optional[str]:
+        """Captures the current browser view for dashboard preview (e.g. for scanning QR login)."""
+        if self.page:
+            try:
+                await self.page.screenshot(path=str(self.live_screenshot_path), full_page=False)
+                return str(self.live_screenshot_path)
+            except Exception as e:
+                logger.warning(f"Failed to capture screenshot: {e}")
+        return None
+
+    async def start(self):
+        """Starts the bot background task."""
+        if self.is_running:
+            return
+        self.is_running = True
+        self.status = "STARTING"
+        self.status_message = "Initializing browser session..."
+        self.started_at = datetime.now()
+        self._task = asyncio.create_task(self._run_loop())
+
+    async def stop(self):
+        """Stops the bot gracefully."""
+        self.is_running = False
+        self.status = "STOPPED"
+        self.status_message = "Bot stopped by user."
+        if self._task and not self._task.done():
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        await self._cleanup()
+
+    async def _cleanup(self):
+        """Closes browser context and Playwright instance."""
+        try:
+            if self.context:
+                await self.context.close()
+            if self.playwright:
+                await self.playwright.stop()
+        except Exception as e:
+            logger.warning(f"Error during cleanup: {e}")
+        finally:
+            self.page = None
+            self.context = None
+            self.playwright = None
+
+    async def _init_browser(self):
+        """Launches persistent browser context with stealth arguments."""
+        self.playwright = await async_playwright().start()
+
+        # Stealth browser launch args
+        args = [
+            "--disable-blink-features=AutomationControlled",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-infobars",
+            "--window-size=1280,800",
+            "--disable-web-security",
+            "--disable-features=IsolateOrigins,site-per-process"
+        ]
+
+        user_agent = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+
+        try:
+            self.context = await self.playwright.chromium.launch_persistent_context(
+                user_data_dir=str(BROWSER_PROFILE_DIR),
+                headless=settings.headless,
+                viewport={"width": 1280, "height": 800},
+                user_agent=user_agent,
+                args=args,
+                locale="id-ID",
+                timezone_id="Asia/Jakarta"
+            )
+        except Exception as e:
+            if "Executable doesn't exist" in str(e) or "playwright install" in str(e):
+                logger.info("Chromium binary tidak ditemukan. Mengunduh Playwright Chromium otomatis...")
+                import subprocess
+                import sys
+                subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+                self.context = await self.playwright.chromium.launch_persistent_context(
+                    user_data_dir=str(BROWSER_PROFILE_DIR),
+                    headless=settings.headless,
+                    viewport={"width": 1280, "height": 800},
+                    user_agent=user_agent,
+                    args=args,
+                    locale="id-ID",
+                    timezone_id="Asia/Jakarta"
+                )
+            else:
+                raise e
+
+        # Remove navigator.webdriver detection flag
+        await self.context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        """)
+
+        pages = self.context.pages
+        self.page = pages[0] if pages else await self.context.new_page()
+
+    async def _check_login_status(self) -> bool:
+        """Determines if TikTok is logged in or waiting for login."""
+        if not self.page:
+            return False
+
+        try:
+            # Check for avatar or profile indicator or inbox header
+            for sel in LOGGED_IN_INDICATORS:
+                if await self.page.query_selector(sel):
+                    return True
+        except Exception:
+            pass
+
+        # Check if URL already contains /messages and is not redirected to login
+        current_url = self.page.url
+        if "messages" in current_url and "login" not in current_url:
+            return True
+
+        return False
+
+    def _is_rate_limited(self) -> bool:
+        """Prevents exceeding max DMs per hour to protect account."""
+        now = datetime.now()
+        # Clean timestamps older than 1 hour
+        self.hourly_replies = [t for t in self.hourly_replies if (now - t).total_seconds() < 3600]
+        return len(self.hourly_replies) >= settings.max_dm_per_hour
+
+    def _match_rule(self, message_text: str, rules: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Matches message against configured rules in order."""
+        msg = message_text.strip().lower()
+        for rule in rules:
+            if not rule.get("is_active"):
+                continue
+            kw = rule["keyword"].strip().lower()
+            mtype = rule.get("match_type", "contains").lower()
+
+            matched = False
+            if mtype == "contains" and kw in msg:
+                matched = True
+            elif mtype == "exact" and kw == msg:
+                matched = True
+            elif mtype == "starts_with" and msg.startswith(kw):
+                matched = True
+            elif mtype == "regex":
+                try:
+                    if re.search(kw, message_text, re.IGNORECASE):
+                        matched = True
+                except Exception:
+                    pass
+
+            if matched:
+                return rule
+        return None
+
+    async def _human_type(self, element, text: str):
+        """Simulates realistic human typing with random delay."""
+        try:
+            await element.click()
+            await asyncio.sleep(random.uniform(0.3, 0.7))
+            for char in text:
+                await self.page.keyboard.type(char, delay=random.randint(30, 80))
+            await asyncio.sleep(random.uniform(0.4, 0.9))
+        except Exception as e:
+            logger.warning(f"Error typing: {e}")
+
+    async def _process_active_chat(self, chat_name: str, rules: List[Dict[str, Any]]):
+        """Reads recent incoming messages in the currently selected chat and auto-replies if matched."""
+        if not self.page:
+            return
+
+        try:
+            # Locate messages in current thread
+            message_elements = await self.page.query_selector_all(
+                "div[data-e2e='chat-message'], div[class*='DivMessageItem'], div[role='row']"
+            )
+
+            if not message_elements:
+                # Fallback: search for chat bubbles
+                message_elements = await self.page.query_selector_all("div[class*='ChatMessage']")
+
+            if not message_elements:
+                return
+
+            last_elem = message_elements[-1]
+            last_text = (await last_elem.inner_text()).strip()
+
+            if not last_text:
+                return
+
+            # Check if this message was sent by us (outbound) or received (inbound)
+            # TikTok outbound messages typically have align-items: flex-end or class with 'right' / 'self'
+            html = await last_elem.evaluate("el => el.outerHTML")
+            is_self = "right" in html.lower() or "self" in html.lower() or "flex-end" in html.lower()
+
+            if is_self:
+                # We already sent the latest message, skip to avoid spamming ourselves
+                return
+
+            logger.info(f"Incoming message from {chat_name}: '{last_text}'")
+
+            # Check matching rule
+            rule = self._match_rule(last_text, rules)
+            if not rule:
+                logger.debug(f"No rule matched for: '{last_text}'")
+                return
+
+            rule_id = rule["id"]
+            kw = rule["keyword"]
+            reply_tpl = rule["reply_message"]
+            cooldown = rule.get("cooldown_seconds", 3600)
+
+            # Check cooldown for this chat user
+            chat_user_id = chat_name.lower().strip()
+            can_send = await can_reply_to_user(chat_user_id, rule_id, cooldown)
+            if not can_send:
+                logger.info(f"User {chat_name} is in cooldown for rule '{kw}'. Skipping.")
+                await log_activity(
+                    chat_username=chat_name,
+                    incoming_message=last_text,
+                    matched_keyword=kw,
+                    replied_message=None,
+                    status="cooldown",
+                    error_message=f"Cooldown active ({cooldown}s)"
+                )
+                return
+
+            if self._is_rate_limited():
+                logger.warning("Hourly rate limit reached! Pausing replies.")
+                await log_activity(
+                    chat_username=chat_name,
+                    incoming_message=last_text,
+                    matched_keyword=kw,
+                    replied_message=None,
+                    status="rate_limited",
+                    error_message=f"Max {settings.max_dm_per_hour} DMs per hour limit reached."
+                )
+                return
+
+            # Prepare reply
+            final_reply = reply_tpl.replace("{username}", chat_name)
+
+            # Find input box
+            input_box = None
+            for sel in CHAT_INPUT_BOX:
+                input_box = await self.page.query_selector(sel)
+                if input_box:
+                    break
+
+            if not input_box:
+                logger.warning("Chat input box not found!")
+                return
+
+            # Human typing delay
+            await asyncio.sleep(random.uniform(settings.human_delay_min, settings.human_delay_max))
+            await self._human_type(input_box, final_reply)
+
+            # Send message via Enter key or Send button
+            sent_success = False
+            for btn_sel in SEND_BUTTON:
+                send_btn = await self.page.query_selector(btn_sel)
+                if send_btn and await send_btn.is_visible():
+                    await send_btn.click()
+                    sent_success = True
+                    break
+
+            if not sent_success:
+                # Press Enter key
+                await self.page.keyboard.press("Enter")
+                sent_success = True
+
+            # Register reply
+            self.hourly_replies.append(datetime.now())
+            await record_reply(chat_user_id, chat_name, last_text, rule_id)
+            await log_activity(
+                chat_username=chat_name,
+                incoming_message=last_text,
+                matched_keyword=kw,
+                replied_message=final_reply,
+                status="sent"
+            )
+            logger.info(f"Successfully auto-replied to {chat_name} for keyword '{kw}'")
+
+            # Post-reply delay
+            await asyncio.sleep(random.uniform(1.0, 2.5))
+            await self.capture_screenshot()
+
+        except Exception as e:
+            logger.error(f"Error processing active chat {chat_name}: {e}")
+            await log_activity(
+                chat_username=chat_name,
+                incoming_message=None,
+                matched_keyword=None,
+                replied_message=None,
+                status="error",
+                error_message=str(e)
+            )
+
+    async def _scan_inbox(self):
+        """Scans TikTok conversation list for new or unread messages."""
+        if not self.page:
+            return
+
+        try:
+            active_rules = await get_active_rules()
+            if not active_rules:
+                self.status_message = "Running, but no active rules found. Please add keywords in dashboard."
+                return
+
+            # Make sure we are on TikTok messages page
+            if "messages" not in self.page.url:
+                await self.page.goto(MESSAGES_URL, wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(3)
+
+            # Find conversation items
+            chat_items = []
+            for sel in CHAT_ITEM_CONTAINERS:
+                items = await self.page.query_selector_all(sel)
+                if items:
+                    chat_items = items
+                    break
+
+            if not chat_items:
+                # No conversation containers found, capture screenshot for debugging
+                await self.capture_screenshot()
+                return
+
+            logger.info(f"Found {len(chat_items)} conversation item(s) in inbox.")
+
+            # Prioritize unread chats, or check top 5 recent chats
+            for item in chat_items[:5]:
+                try:
+                    # Check if unread badge exists
+                    is_unread = False
+                    for badge_sel in UNREAD_BADGE:
+                        badge = await item.query_selector(badge_sel)
+                        if badge and await badge.is_visible():
+                            is_unread = True
+                            break
+
+                    # Extract username / contact name
+                    name_elem = await item.query_selector("span, p, h4, div[class*='name']")
+                    chat_name = (await name_elem.inner_text()).strip() if name_elem else "Pengguna TikTok"
+
+                    # Open conversation
+                    await item.click()
+                    await asyncio.sleep(random.uniform(1.2, 2.0))
+
+                    # Process messages in this chat
+                    await self._process_active_chat(chat_name, active_rules)
+
+                except Exception as ex:
+                    logger.warning(f"Error inspecting chat item: {ex}")
+                    continue
+
+            # Update screenshot
+            await self.capture_screenshot()
+
+        except Exception as e:
+            logger.error(f"Inbox scan error: {e}")
+
+    async def _run_loop(self):
+        """Main 24/7 background worker loop with auto-recovery and resilience."""
+        while self.is_running:
+            try:
+                # Initialize browser if not already active
+                if not self.context or not self.page:
+                    await self._init_browser()
+                    logger.info(f"Navigating to {MESSAGES_URL}...")
+                    await self.page.goto(MESSAGES_URL, wait_until="domcontentloaded", timeout=45000)
+                    await asyncio.sleep(3)
+                    await self.capture_screenshot()
+
+                # Inner monitoring loop
+                while self.is_running:
+                    is_logged_in = await self._check_login_status()
+
+                    if not is_logged_in:
+                        self.status = "NEEDS_LOGIN"
+                        self.status_message = "Silakan scan QR Code TikTok di Live Browser Preview untuk login."
+                        await self.capture_screenshot()
+                        await asyncio.sleep(4)
+                        continue
+
+                    # When logged in
+                    self.status = "RUNNING"
+                    self.status_message = "Bot aktif & memantau Direct Messages 24/7."
+
+                    # Perform inbox scan and reply
+                    await self._scan_inbox()
+
+                    # Sleep check interval with minor random jitter
+                    jitter = random.uniform(-1.5, 2.5)
+                    wait_time = max(5.0, settings.check_interval + jitter)
+                    await asyncio.sleep(wait_time)
+
+            except asyncio.CancelledError:
+                logger.info("Bot worker task cancelled gracefully.")
+                break
+            except Exception as e:
+                if not self.is_running:
+                    break
+                logger.error(f"Bot worker encountered error: {e}. Auto-recovering in 15 seconds...", exc_info=True)
+                self.status = "ERROR"
+                self.status_message = f"Terjadi kendala koneksi: {str(e)[:100]}. Memulihkan otomatis dalam 15 detik..."
+                await self.capture_screenshot()
+                await self._cleanup()
+                await asyncio.sleep(15)
+
+bot_engine = TikTokBotEngine()

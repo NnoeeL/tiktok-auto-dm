@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  tiktok-auto-dm:
+    build: .
+    container_name: tiktok_auto_dm_bot
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - HEADLESS=true
+      - AUTO_START=true
+      - PORT=8000
+      - HOST=0.0.0.0
+      - CHECK_INTERVAL=12
+      - MAX_DM_PER_HOUR=40
+    volumes:
+      # Sesi browser, cookies login, dan database SQLite tersimpan permanen di folder user_data
+      - ./user_data:/app/user_data

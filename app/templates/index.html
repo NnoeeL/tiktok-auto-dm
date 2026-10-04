@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TikTok Auto DM Pro - 24/7 Cloud & Local Automation</title>
+  <meta name="description" content="Dashboard otomasi cerdas TikTok Auto DM berbasis keyword, human-like typing, dan live browser monitoring untuk operasional 24/7.">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- Top Navigation Bar -->
+    <header class="navbar">
+      <div class="brand">
+        <div class="brand-icon">🎵</div>
+        <div>
+          <div style="display: flex; align-items: center;">
+            <h1 class="brand-title">TikTok Auto DM Pro</h1>
+            <span class="brand-tag">24/7 Engine</span>
+          </div>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">
+            Sistem Otomasi Balas Pesan TikTok Berdasarkan Keyword
+          </p>
+        </div>
+      </div>
+
+      <div class="navbar-right">
+        <!-- Live Status Pill -->
+        <div id="botStatusPill" class="status-pill">
+          <div class="pulse-dot"></div>
+          <span id="botStatusText">MEMERIKSA STATUS...</span>
+        </div>
+
+        <!-- Quick Start/Stop Trigger -->
+        <button id="btnStartBot" class="btn btn-primary" style="display: none;">
+          ▶️ Mulai Bot (Start)
+        </button>
+        <button id="btnStopBot" class="btn btn-danger" style="display: none;">
+          ⏹️ Hentikan Bot (Stop)
+        </button>
+      </div>
+    </header>
+
+    <!-- Top Statistics Overview -->
+    <section class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-info">
+          <h4>DM Terkirim Hari Ini</h4>
+          <div id="statSentToday" class="stat-value">0</div>
+        </div>
+        <div class="stat-icon cyan">🚀</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-info">
+          <h4>Total Balasan Sukses</h4>
+          <div id="statTotalSent" class="stat-value">0</div>
+        </div>
+        <div class="stat-icon pink">💬</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-info">
+          <h4>Keyword Pemicu Aktif</h4>
+          <div id="statActiveRules" class="stat-value">0</div>
+        </div>
+        <div class="stat-icon purple">🎯</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-info">
+          <h4>User Terhubung</h4>
+          <div id="statUniqueUsers" class="stat-value">0</div>
+        </div>
+        <div class="stat-icon green">👥</div>
+      </div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <nav class="tabs-nav">
+      <button class="tab-btn active" data-tab="tabMonitor">
+        🖥️ Live Monitor & Kontrol
+      </button>
+      <button class="tab-btn" data-tab="tabRules">
+        ⚙️ Aturan Keyword & Pesan
+      </button>
+      <button class="tab-btn" data-tab="tabLogs">
+        📋 Log Aktivitas DM
+      </button>
+      <button class="tab-btn" data-tab="tabDeploy">
+        🚀 Panduan Deploy 24/7 (VPS / Docker)
+      </button>
+    </nav>
+
+    <!-- TAB 1: Live Monitor & Bot Control -->
+    <div id="tabMonitor" class="tab-content active">
+      <div class="monitor-grid">
+        
+        <!-- Live Browser Screenshot Preview -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">📸 Live Browser Preview</h2>
+              <p class="card-subtitle">
+                Pantau tampilan browser TikTok secara visual (scan QR Code login langsung dari sini jika deploy di VPS headless)
+              </p>
+            </div>
+            <button id="btnRefreshScreenshot" class="btn btn-secondary btn-sm">
+              🔄 Segarkan Layar
+            </button>
+          </div>
+
+          <div class="browser-view-container">
+            <div class="browser-overlay-banner">
+              <span>Status Terakhir: <strong id="screenshotTimestamp">-</strong></span>
+              <span style="color: var(--tiktok-cyan);">Live Sync</span>
+            </div>
+
+            <img id="browserScreenshotImg" class="browser-img" src="" alt="Browser View" style="display: none;">
+            
+            <div id="browserPlaceholder" class="browser-placeholder">
+              <div class="icon">📷</div>
+              <h3>Browser Belum Aktif</h3>
+              <p style="max-width: 380px; margin-top: 6px;">
+                Klik tombol <strong>"Mulai Bot (Start)"</strong> untuk membuka sesi browser TikTok. Tangkapan layar otomatis diperbarui setiap beberapa detik.
+              </p>
+            </div>
+          </div>
+
+          <div style="margin-top: 14px; padding: 12px 16px; background: rgba(0, 242, 254, 0.05); border: 1px dashed rgba(0, 242, 254, 0.25); border-radius: var(--radius-sm); font-size: 0.84rem;">
+            💡 <strong>Tips Login di Cloud / VPS:</strong> Jika status berubah menjadi <em>"BUTUH SCAN QR TIKTOK"</em>, buka aplikasi TikTok di smartphone Anda &gt; menu Scan &gt; arahkan kamera ke QR Code yang muncul di layar preview di atas!
+          </div>
+        </div>
+
+        <!-- Bot Control & Status Details -->
+        <div>
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">🎛️ Pusat Kontrol Operasional</h2>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+              <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 4px;">Status Saat Ini:</div>
+              <div id="botStatusMessage" style="font-weight: 600; color: #fff; font-size: 1.05rem; padding: 12px; background: rgba(255, 255, 255, 0.04); border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                Bot is currently stopped.
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px;">
+              <div style="padding: 14px; background: rgba(255, 255, 255, 0.03); border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Uptime Bot</div>
+                <div id="botUptime" style="font-size: 1.25rem; font-weight: 700; color: var(--tiktok-cyan); margin-top: 4px;">
+                  0j 0m 0d
+                </div>
+              </div>
+
+              <div style="padding: 14px; background: rgba(255, 255, 255, 0.03); border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Mode Operasi</div>
+                <div style="font-size: 1.25rem; font-weight: 700; color: #cbd5e1; margin-top: 4px;">
+                  Headless (24/7)
+                </div>
+              </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <button id="btnRestartBot" class="btn btn-secondary" style="width: 100%;">
+                🔄 Restart Bot & Refresh Sesi
+              </button>
+            </div>
+          </div>
+
+          <!-- Quick Interactive Tester -->
+          <div class="card">
+            <h2 class="card-title">🧪 Uji Cepat Pemicu Pesan (Sandbox)</h2>
+            <p class="card-subtitle">
+              Ketik contoh pesan pengguna untuk melihat apakah keyword Anda cocok sebelum dikirim secara riil.
+            </p>
+
+            <div class="simulator-box">
+              <input type="text" id="testInputMessage" class="form-input" placeholder="Contoh: halo min, mau tanya info harga promo diskon dong!" style="margin-bottom: 10px;">
+              <button id="btnTestRule" class="btn btn-primary btn-sm" style="width: 100%;">
+                ⚡ Cek Kecocokan Keyword
+              </button>
+              <div id="simulatorResult" class="simulator-result" style="display: none;"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- TAB 2: Rules Management -->
+    <div id="tabRules" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">🎯 Daftar Keyword & Pesan Auto DM</h2>
+            <p class="card-subtitle">
+              Atur kata kunci pemicu dan template jawaban otomatis. Gunakan kode <code>{username}</code> untuk menyapa nama pengirim secara dinamis.
+            </p>
+          </div>
+          <button id="btnOpenAddRule" class="btn btn-primary">
+            + Tambah Keyword Baru
+          </button>
+        </div>
+
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Kata Kunci (Keyword)</th>
+                <th>Tipe Kecocokan</th>
+                <th>Pesan Balasan Otomatis</th>
+                <th>Cooldown</th>
+                <th>Aktif</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="rulesTableBody">
+              <!-- Rendered via JavaScript -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: Activity Logs -->
+    <div id="tabLogs" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">📋 Riwayat Aktivitas & Balasan DM</h2>
+            <p class="card-subtitle">
+              Catatan pesan masuk dan balasan otomatis yang telah dieksekusi oleh bot secara real-time.
+            </p>
+          </div>
+          <button id="btnClearLogs" class="btn btn-secondary btn-sm">
+            🗑️ Bersihkan Log
+          </button>
+        </div>
+
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Waktu</th>
+                <th>Pengirim</th>
+                <th>Pesan Masuk</th>
+                <th>Keyword Cocok</th>
+                <th>Pesan Terkirim</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="logsTableBody">
+              <!-- Rendered via JavaScript -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: 24/7 Deployment Guide & Settings -->
+    <div id="tabDeploy" class="tab-content">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+
+        <!-- Bot Tuning Settings -->
+        <div class="card">
+          <h2 class="card-title">⚙️ Konfigurasi Perilaku Bot</h2>
+          <p class="card-subtitle">Atur jeda dan batasan keamanan agar akun TikTok tetap aman dan natural.</p>
+
+          <form id="settingsForm" style="margin-top: 18px;">
+            <div class="form-group">
+              <label class="form-label" for="settingCheckInterval">Interval Pengecekan Inbox (Detik)</label>
+              <input type="number" id="settingCheckInterval" class="form-input" value="12" min="5" max="120">
+              <div class="form-help">Waktu jeda antara setiap scan pesan baru. Direkomendasikan 10 - 20 detik.</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="settingMaxDm">Batas Maksimal DM Per Jam (Anti-Spam Safeguard)</label>
+              <input type="number" id="settingMaxDm" class="form-input" value="40" min="5" max="200">
+              <div class="form-help">Mencegah bot mengirim DM berlebihan agar terhindar dari pembatasan TikTok.</div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">
+              💾 Simpan Pengaturan
+            </button>
+          </form>
+        </div>
+
+        <!-- 24/7 VPS & Cloud Deployment Guide -->
+        <div class="card">
+          <h2 class="card-title">☁️ Panduan Deploy 24/7 ke VPS / Docker</h2>
+          <p class="card-subtitle">Langkah mudah menjalankan bot ini non-stop 24 jam sehari di server cloud.</p>
+
+          <div style="font-size: 0.88rem; color: #cbd5e1; margin-top: 12px; display: flex; flex-direction: column; gap: 14px;">
+            <div>
+              <strong style="color: var(--tiktok-cyan);">Metode 1: Menggunakan Docker Compose (Paling Praktis)</strong>
+              <pre class="code-block">docker compose up -d</pre>
+              <p style="font-size: 0.8rem; color: var(--text-muted);">
+                Folder <code>user_data</code> sudah otomatis di-mount sebagai volume sehingga sesi login dan database tidak akan hilang saat server restart.
+              </p>
+            </div>
+
+            <div>
+              <strong style="color: var(--tiktok-pink);">Metode 2: Menggunakan Systemd / PM2 di VPS Ubuntu</strong>
+              <pre class="code-block"># Jalankan setup otomatis
+./setup.sh
+
+# Jalankan 24/7 di background dengan PM2
+pm2 start run.sh --name "tiktok-auto-dm"</pre>
+            </div>
+
+            <div style="background: rgba(254, 44, 85, 0.08); padding: 12px; border-radius: var(--radius-sm); border: 1px solid rgba(254, 44, 85, 0.2);">
+              🔒 <strong>Keamanan Sesi:</strong> Sesi browser disimpan di direktori <code>user_data/browser_profile</code>. Begitu Anda scan QR sekali lewat Live Preview, bot akan mengingat login Anda secara permanen.
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Modal Tambah / Edit Keyword -->
+  <div id="ruleModal" class="modal-backdrop">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modalTitle" class="modal-title">Tambah Keyword Auto DM Baru</h3>
+        <button id="btnCloseModal" class="modal-close">&times;</button>
+      </div>
+
+      <form id="ruleForm">
+        <div class="form-group">
+          <label class="form-label" for="ruleKeyword">Kata Kunci Pemicu (Keyword) *</label>
+          <input type="text" id="ruleKeyword" class="form-input" placeholder="Contoh: harga, order, promo, link" required>
+          <div class="form-help">Kata kunci yang dikirim oleh pengguna TikTok di chat DM.</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="ruleMatchType">Tipe Kecocokan (Match Type) *</label>
+          <select id="ruleMatchType" class="form-select">
+            <option value="contains">Mengandung Kata (Contains) - Cocok jika kalimat mengandung kata ini</option>
+            <option value="exact">Tepat Sama (Exact Match) - Hanya cocok jika pesan persis sama</option>
+            <option value="starts_with">Diawali Kata (Starts With) - Cocok jika kalimat diawali kata ini</option>
+            <option value="regex">Regular Expression (Regex) - Pola ekspresi regex tingkat lanjut</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="ruleReply">Template Pesan Balasan *</label>
+          <textarea id="ruleReply" class="form-textarea" placeholder="Halo {username}! Terima kasih sudah menghubungi kami. Untuk info harga silakan klik link bio ya!" required></textarea>
+          <div class="form-help">Gunakan <code>{username}</code> untuk otomatis menyisipkan nama pengguna TikTok pengirim.</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="ruleCooldown">Cooldown Per Pengguna (Detik)</label>
+          <input type="number" id="ruleCooldown" class="form-input" value="3600" min="0">
+          <div class="form-help">Waktu tunggu sebelum bot membalas lagi jika user yang sama mengirim keyword yang sama (contoh: 3600 detik = 1 jam).</div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="btnCancelModal" class="btn btn-secondary">Batal</button>
+          <button type="submit" class="btn btn-primary">Simpan Aturan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
