@@ -21,6 +21,7 @@ const API = {
 let statusPollTimer = null;
 let screenshotTimer = null;
 let currentEditingRuleId = null;
+let lastBotIsActive = false;
 
 // DOM Content Loaded
 document.addEventListener('DOMContentLoaded', () => {
@@ -35,6 +36,9 @@ document.addEventListener('DOMContentLoaded', () => {
   refreshStats();
   loadRules();
   loadLogs();
+
+  // Try to show screenshot on initial load (even if bot was previously running)
+  updateScreenshotImage();
 
   // Polling intervals
   statusPollTimer = setInterval(refreshStatus, 4000);
@@ -95,15 +99,34 @@ function updateStatusUI(data) {
   const btnStart = document.getElementById('btnStartBot');
   const btnStop = document.getElementById('btnStopBot');
   const uptimeElem = document.getElementById('botUptime');
+  const qrBanner = document.getElementById('qrScanBanner');
+  const browserContainer = document.getElementById('browserViewContainer');
 
   statusPill.className = 'status-pill';
+  const isNeedsLogin = data.status === 'NEEDS_LOGIN';
+
+  // Toggle QR scan banner & pulsing border
+  if (qrBanner) {
+    if (isNeedsLogin) {
+      qrBanner.classList.add('visible');
+    } else {
+      qrBanner.classList.remove('visible');
+    }
+  }
+  if (browserContainer) {
+    if (isNeedsLogin) {
+      browserContainer.classList.add('qr-mode');
+    } else {
+      browserContainer.classList.remove('qr-mode');
+    }
+  }
 
   if (data.status === 'RUNNING') {
     statusPill.classList.add('running');
     statusText.textContent = 'ONLINE (24/7)';
     btnStart.style.display = 'none';
     btnStop.style.display = 'inline-flex';
-  } else if (data.status === 'NEEDS_LOGIN') {
+  } else if (isNeedsLogin) {
     statusPill.classList.add('needs-login');
     statusText.textContent = 'BUTUH SCAN QR TIKTOK';
     btnStart.style.display = 'none';
@@ -126,16 +149,31 @@ function updateStatusUI(data) {
       const hrs = Math.floor(data.uptime_seconds / 3600);
       const mins = Math.floor((data.uptime_seconds % 3600) / 60);
       const secs = data.uptime_seconds % 60;
-      uptimeElem.textContent = `${hrs}j ${mins}m ${secs}d`;
+      uptimeElem.textContent = `${hrs}j ${mins}m ${secs}dtk`;
     } else {
-      uptimeElem.textContent = '0j 0m 0d';
+      uptimeElem.textContent = '0j 0m 0dtk';
     }
   }
 
-  // Update browser screenshot if active
-  if (data.is_running || data.has_screenshot) {
+  // Manage screenshot polling timer based on bot activity
+  const isActive = data.is_running || data.status === 'NEEDS_LOGIN' || data.status === 'STARTING';
+  if (isActive && !lastBotIsActive) {
+    // Bot just became active — start screenshot polling every 5 seconds
+    updateScreenshotImage();
+    if (screenshotTimer) clearInterval(screenshotTimer);
+    screenshotTimer = setInterval(updateScreenshotImage, 5000);
+  } else if (!isActive && lastBotIsActive) {
+    // Bot just stopped — take one final screenshot update then stop polling
+    updateScreenshotImage();
+    if (screenshotTimer) {
+      clearInterval(screenshotTimer);
+      screenshotTimer = null;
+    }
+  } else if (data.has_screenshot && !screenshotTimer && !isActive) {
+    // Screenshot exists from previous session, show it once
     updateScreenshotImage();
   }
+  lastBotIsActive = isActive;
 }
 
 function updateScreenshotImage() {

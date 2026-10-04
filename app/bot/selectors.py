@@ -12,6 +12,16 @@ LOGIN_QR_CODE = [
     "div[data-e2e='qrcode-container']"
 ]
 
+QR_LOGIN_SWITCH_BUTTONS = [
+    "div:has-text('Gunakan kode QR')",
+    "div:has-text('Use QR code')",
+    "div:has-text('Use QR / TikTok app')",
+    "a:has-text('Gunakan kode QR')",
+    "a:has-text('Use QR code')",
+    "p:has-text('Gunakan kode QR')",
+    "p:has-text('Use QR code')"
+]
+
 LOGIN_BUTTONS = [
     "button[data-e2e='top-login-button']",
     "button:has-text('Log in')",

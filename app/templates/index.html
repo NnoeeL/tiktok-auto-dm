@@ -113,7 +113,18 @@
             </button>
           </div>
 
-          <div class="browser-view-container">
+          <!-- QR Scan Banner (visible only when NEEDS_LOGIN) -->
+          <div id="qrScanBanner" class="qr-scan-banner">
+            <div class="qr-icon">📱</div>
+            <div>
+              <div style="font-size: 1rem; color: var(--tiktok-cyan); margin-bottom: 2px;">🔑 Scan QR Code TikTok untuk Login!</div>
+              <div style="font-weight: 400; color: #cbd5e1; font-size: 0.82rem;">
+                Buka aplikasi TikTok di HP → <strong>Profil</strong> → <strong>☰ Menu</strong> → <strong>Scan QR</strong> → arahkan ke kode di bawah
+              </div>
+            </div>
+          </div>
+
+          <div class="browser-view-container" id="browserViewContainer">
             <div class="browser-overlay-banner">
               <span>Status Terakhir: <strong id="screenshotTimestamp">-</strong></span>
               <span style="color: var(--tiktok-cyan);">Live Sync</span>

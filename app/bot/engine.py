@@ -23,6 +23,7 @@ from app.database import (
 from app.bot.selectors import (
     LOGIN_QR_CODE,
     LOGIN_BUTTONS,
+    QR_LOGIN_SWITCH_BUTTONS,
     LOGGED_IN_INDICATORS,
     MESSAGES_URL,
     CHAT_ITEM_CONTAINERS,
@@ -70,6 +71,58 @@ class TikTokBotEngine:
             except Exception as e:
                 logger.warning(f"Failed to capture screenshot: {e}")
         return None
+
+    async def capture_qr_screenshot(self) -> Optional[str]:
+        """Captures a zoomed-in screenshot of the QR code area for easy scanning.
+        Falls back to full screenshot if QR element cannot be found."""
+        if not self.page:
+            return None
+        try:
+            qr_elem = None
+            for sel in LOGIN_QR_CODE:
+                qr_elem = await self.page.query_selector(sel)
+                if qr_elem:
+                    break
+
+            if qr_elem:
+                # Get bounding box and add generous padding around QR
+                box = await qr_elem.bounding_box()
+                if box:
+                    padding = 80
+                    clip = {
+                        "x": max(0, box["x"] - padding),
+                        "y": max(0, box["y"] - padding),
+                        "width": box["width"] + padding * 2,
+                        "height": box["height"] + padding * 2,
+                    }
+                    await self.page.screenshot(
+                        path=str(self.live_screenshot_path),
+                        clip=clip,
+                        full_page=False
+                    )
+                    logger.info("QR code screenshot captured (zoomed).")
+                    return str(self.live_screenshot_path)
+
+            # Fallback to full page screenshot
+            return await self.capture_screenshot()
+        except Exception as e:
+            logger.warning(f"Failed to capture QR screenshot: {e}")
+            return await self.capture_screenshot()
+
+    async def _switch_to_qr_login(self):
+        """Attempts to click the 'Use QR Code' button on TikTok login page."""
+        if not self.page:
+            return
+        try:
+            for sel in QR_LOGIN_SWITCH_BUTTONS:
+                btn = await self.page.query_selector(sel)
+                if btn and await btn.is_visible():
+                    await btn.click()
+                    logger.info("Switched to QR Code login mode.")
+                    await asyncio.sleep(2)
+                    return
+        except Exception as e:
+            logger.debug(f"Could not switch to QR login: {e}")
 
     async def start(self):
         """Starts the bot background task."""
@@ -445,7 +498,10 @@ class TikTokBotEngine:
                     if not is_logged_in:
                         self.status = "NEEDS_LOGIN"
                         self.status_message = "Silakan scan QR Code TikTok di Live Browser Preview untuk login."
-                        await self.capture_screenshot()
+                        # Try to switch to QR login mode first
+                        await self._switch_to_qr_login()
+                        # Capture zoomed QR screenshot for easy scanning
+                        await self.capture_qr_screenshot()
                         await asyncio.sleep(4)
                         continue
 
