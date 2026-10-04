@@ -271,6 +271,26 @@ class TikTokBotEngine:
 
         return False
 
+    async def _verification_required(self) -> bool:
+        """Detects an account verification checkpoint without attempting to bypass it."""
+        if not self.page:
+            return False
+
+        try:
+            page_text = (await self.page.locator("body").inner_text(timeout=3000)).casefold()
+            current_url = self.page.url.casefold()
+            indicators = (
+                "verifikasikan bahwa ini memang anda",
+                "verify that it's you",
+                "verify your identity",
+                "security check",
+            )
+            return any(indicator in page_text for indicator in indicators) or any(
+                marker in current_url for marker in ("/verify", "/challenge")
+            )
+        except Exception:
+            return False
+
     def _is_rate_limited(self) -> bool:
         """Prevents exceeding max DMs per hour to protect account."""
         now = datetime.now()
@@ -525,6 +545,16 @@ class TikTokBotEngine:
 
                 # Inner monitoring loop
                 while self.is_running:
+                    if await self._verification_required():
+                        self.status = "NEEDS_VERIFICATION"
+                        self.status_message = (
+                            "TikTok meminta verifikasi identitas. Selesaikan melalui sesi browser resmi; "
+                            "bot dijeda dan tidak mencoba melewati verifikasi."
+                        )
+                        await self.capture_screenshot()
+                        await asyncio.sleep(5)
+                        continue
+
                     is_logged_in = await self._check_login_status()
 
                     if not is_logged_in:

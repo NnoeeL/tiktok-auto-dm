@@ -104,6 +104,7 @@ function updateStatusUI(data) {
 
   statusPill.className = 'status-pill';
   const isNeedsLogin = data.status === 'NEEDS_LOGIN';
+  const needsVerification = data.status === 'NEEDS_VERIFICATION';
 
   // Toggle QR scan banner & pulsing border
   if (qrBanner) {
@@ -129,6 +130,11 @@ function updateStatusUI(data) {
   } else if (isNeedsLogin) {
     statusPill.classList.add('needs-login');
     statusText.textContent = 'BUTUH SCAN QR TIKTOK';
+    btnStart.style.display = 'none';
+    btnStop.style.display = 'inline-flex';
+  } else if (needsVerification) {
+    statusPill.classList.add('needs-login');
+    statusText.textContent = 'VERIFIKASI DIPERLUKAN';
     btnStart.style.display = 'none';
     btnStop.style.display = 'inline-flex';
   } else if (data.status === 'STARTING') {

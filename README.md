@@ -67,6 +67,10 @@ Pastikan Docker & Docker Compose sudah terpasang di VPS Anda:
    ```
 4. Bot akan berjalan terus menerus di latar belakang (*background*). Seluruh data login dan aturan tersimpan aman di folder `./user_data`.
 
+Jika preview menampilkan permintaan "Verifikasikan bahwa ini memang Anda", TikTok sedang meminta pemeriksaan keamanan untuk sesi atau lingkungan VPS tersebut. Bot akan berhenti memindai sampai verifikasi diselesaikan. Preview dashboard hanya berupa gambar dan tidak dapat digunakan untuk mengisi OTP atau berinteraksi dengan halaman verifikasi; selesaikan lewat sesi browser resmi yang dapat Anda akses secara interaktif, lalu jalankan ulang bot. Jangan memasukkan kata sandi atau kode OTP ke source code. Pertahankan volume `./user_data` agar profil sesi tidak hilang, tetapi jangan menganggap cookie dapat dipindahkan antarperangkat atau host.
+
+Jangan mencoba mengakali pemeriksaan keamanan atau batasan platform. Gunakan fitur pesan dan otomasi yang memang disediakan/diizinkan oleh TikTok untuk akun Anda.
+
 Untuk melihat log kontainer:
 ```bash
 docker compose logs -f
