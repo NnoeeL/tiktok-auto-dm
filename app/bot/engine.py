@@ -277,10 +277,14 @@ class TikTokBotEngine:
             return False
 
         try:
-            page_text = (await self.page.locator("body").inner_text(timeout=3000)).casefold()
+            page_text = " ".join(
+                (await self.page.locator("body").inner_text(timeout=3000)).casefold().split()
+            )
             current_url = self.page.url.casefold()
             indicators = (
+                "verifikasi bahwa ini memang anda",
                 "verifikasikan bahwa ini memang anda",
+                "verifikasi identitas anda",
                 "verify that it's you",
                 "verify your identity",
                 "security check",
