@@ -114,15 +114,47 @@ class TikTokBotEngine:
         if not self.page:
             return
         try:
-            for sel in QR_LOGIN_SWITCH_BUTTONS:
-                btn = await self.page.query_selector(sel)
-                if btn and await btn.is_visible():
-                    await btn.click()
-                    logger.info("Switched to QR Code login mode.")
-                    await asyncio.sleep(2)
+            # First check: maybe QR is already showing (canvas element present)
+            for sel in LOGIN_QR_CODE:
+                if await self.page.query_selector(sel):
+                    logger.info("QR code already visible, no need to switch.")
                     return
+
+            # Try each selector
+            for sel in QR_LOGIN_SWITCH_BUTTONS:
+                try:
+                    btn = await self.page.query_selector(sel)
+                    if btn and await btn.is_visible():
+                        await btn.click()
+                        logger.info(f"Clicked QR login button via selector: {sel}")
+                        await asyncio.sleep(2)
+                        return
+                except Exception:
+                    continue
+
+            # JS fallback: search all elements for QR-related text and click
+            clicked = await self.page.evaluate("""
+                () => {
+                    const keywords = ['Gunakan kode QR', 'Use QR code', 'QR code', 'QR login'];
+                    const all = document.querySelectorAll('div, span, a, button, p');
+                    for (const el of all) {
+                        const text = (el.textContent || '').trim();
+                        if (keywords.some(kw => text === kw || text.startsWith(kw))) {
+                            el.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            """)
+            if clicked:
+                logger.info("Clicked QR login button via JS fallback.")
+                await asyncio.sleep(2)
+            else:
+                logger.warning("Could not find QR login button on page.")
         except Exception as e:
             logger.debug(f"Could not switch to QR login: {e}")
+
 
     async def start(self):
         """Starts the bot background task."""

@@ -13,13 +13,23 @@ LOGIN_QR_CODE = [
 ]
 
 QR_LOGIN_SWITCH_BUTTONS = [
-    "div:has-text('Gunakan kode QR')",
-    "div:has-text('Use QR code')",
-    "div:has-text('Use QR / TikTok app')",
-    "a:has-text('Gunakan kode QR')",
-    "a:has-text('Use QR code')",
-    "p:has-text('Gunakan kode QR')",
-    "p:has-text('Use QR code')"
+    # data-e2e attribute (most reliable)
+    "[data-e2e='qrcode-tab']",
+    "[data-e2e='qr-code-btn']",
+    "[data-e2e='login-qrcode-tab']",
+    # Text-based selectors (multiple languages)
+    "text='Gunakan kode QR'",
+    "text='Use QR code'",
+    "text='QR code login'",
+    # Role button with text
+    "button:has-text('QR')",
+    "a:has-text('QR')",
+    # Specific structure TikTok uses
+    "div[class*='LoginContainer'] div:has-text('Gunakan kode QR')",
+    "div[class*='LoginContainer'] div:has-text('Use QR code')",
+    # Fallback: any clickable element near QR text
+    "span:has-text('Gunakan kode QR')",
+    "span:has-text('Use QR code')",
 ]
 
 LOGIN_BUTTONS = [
