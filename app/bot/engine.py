@@ -331,55 +331,93 @@ class TikTokBotEngine:
 
     async def _human_type(self, element, text: str):
         """Simulates realistic human typing with random delay."""
-        try:
-            await element.click()
-            await asyncio.sleep(random.uniform(0.3, 0.7))
-            for char in text:
-                await self.page.keyboard.type(char, delay=random.randint(30, 80))
-            await asyncio.sleep(random.uniform(0.4, 0.9))
-        except Exception as e:
-            logger.warning(f"Error typing: {e}")
+        await element.click()
+        await asyncio.sleep(random.uniform(0.3, 0.7))
+        for char in text:
+            await self.page.keyboard.type(char, delay=random.randint(30, 80))
+        await asyncio.sleep(random.uniform(0.4, 0.9))
 
     async def _process_active_chat(self, chat_name: str, rules: List[Dict[str, Any]]):
         """Reads recent incoming messages in the currently selected chat and auto-replies if matched."""
         if not self.page:
             return
 
+        last_text: Optional[str] = None
+        kw: Optional[str] = None
         try:
             # Locate messages in current thread
-            message_elements = await self.page.query_selector_all(
-                "div[data-e2e='chat-message'], div[class*='DivMessageItem'], div[role='row']"
-            )
+            message_elements = await self.page.query_selector_all(", ".join(MESSAGE_BUBBLES))
 
             if not message_elements:
-                # Fallback: search for chat bubbles
-                message_elements = await self.page.query_selector_all("div[class*='ChatMessage']")
+                # TikTok sometimes exposes messages through generic chat bubble classes.
+                message_elements = await self.page.query_selector_all(
+                    "[class*='message' i], [data-e2e*='message' i]"
+                )
+
+            visible_messages = []
+            for element in message_elements:
+                if not await element.is_visible():
+                    continue
+                text = (await element.inner_text()).strip()
+                if not text:
+                    continue
+                is_composer = await element.evaluate(
+                    "el => !!el.closest('[contenteditable=\"true\"], textarea, input')"
+                )
+                if not is_composer:
+                    visible_messages.append(element)
+            message_elements = visible_messages
 
             if not message_elements:
+                self.status_message = (
+                    f"Percakapan {chat_name} terbuka, tetapi bubble pesan belum terdeteksi. "
+                    "Struktur DM TikTok berubah; periksa pembaruan selector bot."
+                )
+                logger.warning(self.status_message)
                 return
 
-            last_elem = message_elements[-1]
-            last_text = (await last_elem.inner_text()).strip()
+            latest_incoming_text = ""
+            rule = None
+            for element in reversed(message_elements):
+                text = (await element.inner_text()).strip()
+                if not text:
+                    continue
 
-            if not last_text:
-                return
+                # Outbound bubbles should never trigger an automatic reply.
+                is_self = await element.evaluate("""
+                    el => {
+                        for (let node = el, depth = 0; node && depth < 5; node = node.parentElement, depth++) {
+                            const className = typeof node.className === 'string' ? node.className : '';
+                            const markers = `${className} ${node.getAttribute('data-e2e') || ''} ${node.getAttribute('data-testid') || ''}`;
+                            if (/(^|[-_\\s])(self|outgoing|sent|right)([-_\\s]|$)/i.test(markers)) return true;
+                            const style = getComputedStyle(node);
+                            if (style.alignItems === 'flex-end' || style.justifyContent === 'flex-end') return true;
+                        }
+                        return false;
+                    }
+                """)
+                if is_self:
+                    continue
 
-            # Check if this message was sent by us (outbound) or received (inbound)
-            # TikTok outbound messages typically have align-items: flex-end or class with 'right' / 'self'
-            html = await last_elem.evaluate("el => el.outerHTML")
-            is_self = "right" in html.lower() or "self" in html.lower() or "flex-end" in html.lower()
+                if not latest_incoming_text:
+                    latest_incoming_text = text
 
-            if is_self:
-                # We already sent the latest message, skip to avoid spamming ourselves
+                candidate_rule = self._match_rule(text, rules)
+                if candidate_rule:
+                    last_text = text
+                    rule = candidate_rule
+                    break
+
+            if not rule:
+                last_text = latest_incoming_text
+                logger.info(f"No active keyword matched message from {chat_name}: {last_text!r}")
+                self.status_message = (
+                    f"Pesan terbaca dari {chat_name}: “{last_text[:100] or 'tidak ada pesan masuk'}”. "
+                    f"Keyword aktif: {', '.join(r['keyword'] for r in rules)}."
+                )
                 return
 
             logger.info(f"Incoming message from {chat_name}: '{last_text}'")
-
-            # Check matching rule
-            rule = self._match_rule(last_text, rules)
-            if not rule:
-                logger.debug(f"No rule matched for: '{last_text}'")
-                return
 
             rule_id = rule["id"]
             kw = rule["keyword"]
@@ -424,7 +462,17 @@ class TikTokBotEngine:
                     break
 
             if not input_box:
-                logger.warning("Chat input box not found!")
+                error_message = "Kotak input DM tidak ditemukan pada percakapan ini."
+                logger.warning(error_message)
+                self.status_message = error_message
+                await log_activity(
+                    chat_username=chat_name,
+                    incoming_message=last_text,
+                    matched_keyword=kw,
+                    replied_message=None,
+                    status="error",
+                    error_message=error_message
+                )
                 return
 
             # Human typing delay
@@ -463,10 +511,11 @@ class TikTokBotEngine:
 
         except Exception as e:
             logger.error(f"Error processing active chat {chat_name}: {e}")
+            self.status_message = f"Gagal memproses DM dari {chat_name}: {str(e)[:120]}"
             await log_activity(
                 chat_username=chat_name,
-                incoming_message=None,
-                matched_keyword=None,
+                incoming_message=last_text,
+                matched_keyword=kw,
                 replied_message=None,
                 status="error",
                 error_message=str(e)
@@ -480,7 +529,9 @@ class TikTokBotEngine:
         try:
             active_rules = await get_active_rules()
             if not active_rules:
-                self.status_message = "Running, but no active rules found. Please add keywords in dashboard."
+                self.status_message = (
+                    "Bot aktif, tetapi belum ada keyword aktif. Tambahkan atau aktifkan aturan di dashboard."
+                )
                 return
 
             # Make sure we are on TikTok messages page
@@ -497,26 +548,50 @@ class TikTokBotEngine:
                     break
 
             if not chat_items:
-                # No conversation containers found, capture screenshot for debugging
+                self.status_message = (
+                    "Inbox TikTok terlihat, tetapi elemen percakapannya tidak cocok dengan selector. "
+                    "Perbarui bot dan restart agar deteksi inbox terbaru digunakan."
+                )
+                logger.warning(self.status_message)
                 await self.capture_screenshot()
                 return
 
             logger.info(f"Found {len(chat_items)} conversation item(s) in inbox.")
+            self.status_message = (
+                f"Inbox terdeteksi ({len(chat_items)} percakapan); memprioritaskan chat yang belum dibaca."
+            )
 
-            # Prioritize unread chats, or check top 5 recent chats
-            for item in chat_items[:5]:
+            unread_chats = []
+            recent_chats = []
+            unread_selector = ", ".join(UNREAD_BADGE)
+            for item in chat_items:
                 try:
-                    # Check if unread badge exists
-                    is_unread = False
-                    for badge_sel in UNREAD_BADGE:
-                        badge = await item.query_selector(badge_sel)
-                        if badge and await badge.is_visible():
-                            is_unread = True
-                            break
+                    badge = await item.query_selector(unread_selector)
+                    is_unread = badge is not None and await badge.is_visible()
+                    (unread_chats if is_unread else recent_chats).append(item)
+                except Exception as ex:
+                    logger.warning(f"Error checking unread status for chat: {ex}")
 
+            chats_to_check = unread_chats if unread_chats else recent_chats[:5]
+            logger.info(
+                f"Prioritizing {len(unread_chats)} unread conversation(s); "
+                f"checking {len(chats_to_check)} chat(s) this scan."
+            )
+
+            for item in chats_to_check:
+                try:
                     # Extract username / contact name
-                    name_elem = await item.query_selector("span, p, h4, div[class*='name']")
-                    chat_name = (await name_elem.inner_text()).strip() if name_elem else "Pengguna TikTok"
+                    name_elem = await item.query_selector(
+                        "[data-e2e*='name' i], [class*='name' i], span, p, h4"
+                    )
+                    chat_name = (
+                        (await name_elem.inner_text()).strip()
+                        if name_elem
+                        else ""
+                    )
+                    if not chat_name:
+                        chat_text = (await item.inner_text()).strip().splitlines()
+                        chat_name = chat_text[0].strip() if chat_text else "Pengguna TikTok"
 
                     # Open conversation
                     await item.click()
@@ -534,6 +609,7 @@ class TikTokBotEngine:
 
         except Exception as e:
             logger.error(f"Inbox scan error: {e}")
+            self.status_message = f"Gagal memindai inbox TikTok: {str(e)[:120]}"
 
     async def _run_loop(self):
         """Main 24/7 background worker loop with auto-recovery and resilience."""

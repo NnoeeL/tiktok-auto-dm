@@ -549,13 +549,19 @@ function renderLogsTable(logs) {
   logs.forEach(log => {
     const tr = document.createElement('tr');
     
-    let statusBadge = `<span class="badge badge-green">Terkirim</span>`;
-    if (log.status === 'cooldown') {
+    let statusBadge;
+    if (log.status === 'sent') {
+      statusBadge = `<span class="badge badge-green">Terkirim</span>`;
+    } else if (log.status === 'no_match') {
+      statusBadge = `<span class="badge badge-yellow">Tidak cocok</span>`;
+    } else if (log.status === 'cooldown') {
       statusBadge = `<span class="badge badge-yellow">Cooldown</span>`;
     } else if (log.status === 'error') {
       statusBadge = `<span class="badge badge-pink">Error</span>`;
     } else if (log.status === 'rate_limited') {
       statusBadge = `<span class="badge badge-pink">Batas Limit</span>`;
+    } else {
+      statusBadge = `<span class="badge badge-yellow">${escapeHtml(log.status || 'Status tidak diketahui')}</span>`;
     }
 
     tr.innerHTML = `

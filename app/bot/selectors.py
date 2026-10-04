@@ -52,13 +52,22 @@ MESSAGES_URL = "https://www.tiktok.com/messages"
 
 CHAT_ITEM_CONTAINERS = [
     "div[data-e2e='chat-item']",
+    "[data-e2e*='chat-list-item']",
+    "[data-e2e*='conversation-item']",
+    "[data-testid*='chat-item']",
     "div[class*='DivChatItem']",
+    "div[class*='ChatListItem']",
+    "div[class*='DivChatListItem']",
+    "div[class*='ConversationItem']",
+    "div[class*='conversation-item']",
     "div[role='listitem']",
     "div[class*='chat-item']"
 ]
 
 UNREAD_BADGE = [
     "span[data-e2e='unread-badge']",
+    "[data-e2e*='unread']",
+    "[aria-label*='unread' i]",
     "div[class*='UnreadBadge']",
     "span[class*='Badge']",
     "div[class*='Badge']",
@@ -82,7 +91,13 @@ SEND_BUTTON = [
 
 MESSAGE_BUBBLES = [
     "div[data-e2e='chat-message']",
+    "[data-e2e*='chat-message' i]",
+    "[data-e2e*='message-item' i]",
+    "[data-testid*='message' i]",
     "div[class*='DivMessageItem']",
+    "[class*='MessageItem' i]",
+    "[class*='MessageContent' i]",
+    "[class*='ChatMessage' i]",
     "div[class*='ChatMessage']",
-    "div[role='row']"
+    "[data-e2e*='message' i]"
 ]
