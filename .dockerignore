@@ -1,0 +1,25 @@
+# Exclude user data volume (browser session, screenshots, DB)
+# These are mounted at runtime via docker-compose volumes, not baked into image
+user_data/
+
+# Python environment & cache
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+
+# Git
+.git/
+.gitignore
+
+# Development files
+.env
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
